@@ -77,4 +77,74 @@ root
 +-----------+--------------------+--------------------+--------------------+------------------+--------+-------+-----+
 ```
 
-Query Plan
+## Query Plan
+### Aggregate Question table
+Count number of quesiton grouped by `question_id`, and `mont`
+```
+answers_month = answersDF.withColumn('month', month('creation_date')).groupBy('question_id', 'month').agg(count('*').alias('cnt')
+```
+
+```
+== Physical Plan ==
+*(2) HashAggregate(keys=[question_id#0L, month#110], functions=[count(1)])
++- Exchange hashpartitioning(question_id#0L, month#110, 200), true, [id=#100]
+   +- *(1) HashAggregate(keys=[question_id#0L, month#110], functions=[partial_count(1)])
+      +- *(1) Project [question_id#0L, month(cast(creation_date#2 as date)) AS month#110]
+         +- *(1) ColumnarToRow
+            +- FileScan parquet [question_id#0L,creation_date#2] Batched: true, DataFilters: [], Format: Parquet, Location: InMemoryFileIndex[file:/home/dtn/notebooks/data/answers], PartitionFilters: [], PushedFilters: [], ReadSchema: struct<question_id:bigint,creation_date:timestamp>
+```
+
+```
++-----------+-----+---+
+|question_id|month|cnt|
++-----------+-----+---+
+|     358894|    9|  5|
+|     332782|    5|  2|
+|     281552|    9|  2|
+|     332224|    5|  1|
+|     395851|    3|  3|
+|     192346|    7|  1|
+|     302487|    1|  3|
+|     317571|    3|  2|
+|     179458|    5|  2|
+|     294966|   11|  5|
+|     199602|    8|  6|
+|     251275|    4|  2|
+|     208722|    9|  1|
+|     284125|   10|  1|
+|     427452|    9|  4|
+|     399738|    4|  1|
+|     217997|   11|  4|
+|     386225|    2|  1|
+|     305095|    1|  3|
+|     206822|    9|  6|
++-----------+-----+---+
+```
+
+### Join tables
+```
+resultDF = questionsDF.join(answers_month, 'question_id').select('question_id', 'creation_date', 'title', 'month', 'cnt')
+resultDF.explain()
+
+resultDF.orderBy('question_id', 'month').show()
+
+```
+Query plan
+
+```
+== Physical Plan ==
+*(3) Project [question_id#12L, creation_date#14, title#15, month#110, cnt#126L]
++- *(3) BroadcastHashJoin [question_id#12L], [question_id#0L], Inner, BuildRight
+   :- *(3) Project [question_id#12L, creation_date#14, title#15]
+   :  +- *(3) Filter isnotnull(question_id#12L)
+   :     +- *(3) ColumnarToRow
+   :        +- FileScan parquet [question_id#12L,creation_date#14,title#15] Batched: true, DataFilters: [isnotnull(question_id#12L)], Format: Parquet, Location: InMemoryFileIndex[file:/home/dtn/notebooks/data/questions], PartitionFilters: [], PushedFilters: [IsNotNull(question_id)], ReadSchema: struct<question_id:bigint,creation_date:timestamp,title:string>
+   +- BroadcastExchange HashedRelationBroadcastMode(List(input[0, bigint, true])), [id=#200]
+      +- *(2) HashAggregate(keys=[question_id#0L, month#110], functions=[count(1)])
+         +- Exchange hashpartitioning(question_id#0L, month#110, 200), true, [id=#196]
+            +- *(1) HashAggregate(keys=[question_id#0L, month#110], functions=[partial_count(1)])
+               +- *(1) Project [question_id#0L, month(cast(creation_date#2 as date)) AS month#110]
+                  +- *(1) Filter isnotnull(question_id#0L)
+                     +- *(1) ColumnarToRow
+                        +- FileScan parquet [question_id#0L,creation_date#2] Batched: true, DataFilters: [isnotnull(question_id#0L)], Format: Parquet, Location: InMemoryFileIndex[file:/home/dtn/notebooks/data/answers], PartitionFilters: [], PushedFilters: [IsNotNull(question_id)], ReadSchema: struct<question_id:bigint,creation_date:timestamp>
+```
