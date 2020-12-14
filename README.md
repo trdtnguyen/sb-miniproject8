@@ -4,6 +4,7 @@ Spark Optimization - Mini Project
 ## Data model
 
 ### Questions:
+```
 root
  |-- question_id: long (nullable = true)
  |-- tags: array (nullable = true)
@@ -14,8 +15,9 @@ root
  |-- comments: long (nullable = true)
  |-- user_id: long (nullable = true)
  |-- views: long (nullable = true)
- 
+ ```
  ### Answers
+```
 root
  |-- question_id: long (nullable = true)
  |-- answer_id: long (nullable = true)
@@ -23,3 +25,4 @@ root
  |-- comments: long (nullable = true)
  |-- user_id: long (nullable = true)
  |-- score: long (nullable = true) 
+```
