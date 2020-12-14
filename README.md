@@ -1,6 +1,34 @@
 # sb-miniproject8
 Spark Optimization - Mini Project
 
+## Summary
+Experiment settings:
+* Standalone spark with one master node and two worker nodes in the same Ubuntu server.
+* Master node: 8 cores, 16 GB memory
+* Worker node: 8 cores, 1GB 
+
+Step 1: For each method, restart spark and submit the spark job using following command:
+```
+spark-submit --master spark://192.168.0.2:7077 optimize.py
+```
+Step 2: Get the duration of completed job at Spark webui (`localhost:8080`)
+
+Step 3: Repeat step 1 and 2 N times (N = 5) in this experiment
+Step 4: Collect the results and compute the average runtime
+
+The final results:
+
+Method  | Duration (s)
+--------|-------------
+Original query | 9
+Changing join order | 9
+Using broadcast | 9
+Using cache | 4.5
+Cache + broadcast | 5.4
+### Analysis
+* Changing join order would not improve the performance in this case. The reason is the sizes of two tables are similar.
+* Broadcast give zero improvement. The reason is we use standalone server with only two worker nodes and the dataset is not large enough to make the broadcast works effectively.
+* Caching dataframe improve the performance neraly two times. The reason is cach work best for small dataset and standalone server where master and worker nodes locate in the same physical machine.
 ## Data model
 
 ### Questions:
