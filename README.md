@@ -148,3 +148,64 @@ Query plan
                      +- *(1) ColumnarToRow
                         +- FileScan parquet [question_id#0L,creation_date#2] Batched: true, DataFilters: [isnotnull(question_id#0L)], Format: Parquet, Location: InMemoryFileIndex[file:/home/dtn/notebooks/data/answers], PartitionFilters: [], PushedFilters: [IsNotNull(question_id)], ReadSchema: struct<question_id:bigint,creation_date:timestamp>
 ```
+
+Query result:
+```
++-----------+--------------------+--------------------+-----+---+
+|question_id|       creation_date|               title|month|cnt|
++-----------+--------------------+--------------------+-----+---+
+|     155989|2014-12-31 19:59:...|Frost bubble form...|    2|  1|
+|     155989|2014-12-31 19:59:...|Frost bubble form...|   12|  1|
+|     155990|2014-12-31 20:51:...|The abstract spac...|    1|  2|
+|     155992|2014-12-31 21:44:...|centrifugal force...|    1|  1|
+|     155993|2014-12-31 21:56:...|How can I estimat...|    1|  1|
+|     155995|2014-12-31 23:16:...|Why should a solu...|    1|  3|
+|     155996|2015-01-01 00:06:...|Why do we assume ...|    1|  2|
+|     155996|2015-01-01 00:06:...|Why do we assume ...|    2|  1|
+|     155996|2015-01-01 00:06:...|Why do we assume ...|   11|  1|
+|     155997|2015-01-01 00:26:...|Why do square sha...|    1|  3|
+|     155999|2015-01-01 01:01:...|Diagonalizability...|    1|  1|
+|     156008|2015-01-01 02:48:...|Capturing a light...|    1|  2|
+|     156008|2015-01-01 02:48:...|Capturing a light...|   11|  1|
+|     156016|2015-01-01 04:31:...|The interference ...|    1|  1|
+|     156020|2015-01-01 05:19:...|What is going on ...|    1|  1|
+|     156021|2015-01-01 05:21:...|How to calculate ...|    2|  1|
+|     156022|2015-01-01 05:55:...|Advice on Major S...|    1|  1|
+|     156025|2015-01-01 06:32:...|Deriving the Cano...|    1|  1|
+|     156026|2015-01-01 06:49:...|Does Bell's inequ...|    1|  3|
+|     156027|2015-01-01 06:49:...|Deriving X atom f...|    1|  1|
++-----------+--------------------+--------------------+-----+---+
+only showing top 20 rows
+
+73020
+```
+
+With broadcast
+```
+from pyspark.sql.functions import broadcast
+resultDF = answers_month.join(broadcast(questionsDF), 'question_id').select('question_id', 'creation_date', 'title', 'month', 'cnt')
+resultDF.explain()
+
+finalDF = resultDF.orderBy('question_id', 'month')
+
+finalDF.show()
+print(finalDF.count())
+```
+
+```
+== Physical Plan ==
+*(3) Project [question_id#0L, creation_date#14, title#15, month#110, cnt#126L]
++- *(3) BroadcastHashJoin [question_id#0L], [question_id#12L], Inner, BuildRight
+   :- *(3) HashAggregate(keys=[question_id#0L, month#110], functions=[count(1)])
+   :  +- Exchange hashpartitioning(question_id#0L, month#110, 200), true, [id=#192]
+   :     +- *(1) HashAggregate(keys=[question_id#0L, month#110], functions=[partial_count(1)])
+   :        +- *(1) Project [question_id#0L, month(cast(creation_date#2 as date)) AS month#110]
+   :           +- *(1) Filter isnotnull(question_id#0L)
+   :              +- *(1) ColumnarToRow
+   :                 +- FileScan parquet [question_id#0L,creation_date#2] Batched: true, DataFilters: [isnotnull(question_id#0L)], Format: Parquet, Location: InMemoryFileIndex[file:/home/dtn/notebooks/data/answers], PartitionFilters: [], PushedFilters: [IsNotNull(question_id)], ReadSchema: struct<question_id:bigint,creation_date:timestamp>
+   +- BroadcastExchange HashedRelationBroadcastMode(List(input[0, bigint, true])), [id=#200]
+      +- *(2) Project [question_id#12L, creation_date#14, title#15]
+         +- *(2) Filter isnotnull(question_id#12L)
+            +- *(2) ColumnarToRow
+               +- FileScan parquet [question_id#12L,creation_date#14,title#15] Batched: true, DataFilters: [isnotnull(question_id#12L)], Format: Parquet, Location: InMemoryFileIndex[file:/home/dtn/notebooks/data/questions], PartitionFilters: [], PushedFilters: [IsNotNull(question_id)], ReadSchema: struct<question_id:bigint,creation_date:timestamp,title:string>
+```
