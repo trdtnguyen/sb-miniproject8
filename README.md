@@ -35,7 +35,7 @@ Cache + broadcast | 5.4
 `localhost:8080`when run PySpark
 ![image1](images/spark_webui.jpg)
 
-`localhost:4040` when run on Scalar - ParkShell
+`localhost:4040` when run on Scalar - SparkShell
 ![image2](images/spark_webui2.jpg)
 ## Data model
 
