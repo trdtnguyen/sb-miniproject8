@@ -262,8 +262,9 @@ resultDF = questionsDF.join(answers_month, 'question_id').select('question_id', 
 ```
 ### Cache + broadcast
 ```
+from pyspark.sql.functions import broadcast
 answers_month.cache()
-resultDF = questionsDF.join(answers_month, 'question_id').select('question_id', 'creation_date', 'title', 'month', 'cnt')
+resultDF = questionsDF.join(broadcast(answers_month), 'question_id').select('question_id', 'creation_date', 'title', 'month', 'cnt')
 ```
 ***Query plan***
 ```
