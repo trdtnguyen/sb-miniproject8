@@ -77,13 +77,14 @@ root
 +-----------+--------------------+--------------------+--------------------+------------------+--------+-------+-----+
 ```
 
-## Query Plan
+## The original queries
 ### Aggregate Question table
 Count number of quesiton grouped by `question_id`, and `mont`
 ```
 answers_month = answersDF.withColumn('month', month('creation_date')).groupBy('question_id', 'month').agg(count('*').alias('cnt')
 ```
 
+***Query plan***
 ```
 == Physical Plan ==
 *(2) HashAggregate(keys=[question_id#0L, month#110], functions=[count(1)])
@@ -93,7 +94,7 @@ answers_month = answersDF.withColumn('month', month('creation_date')).groupBy('q
          +- *(1) ColumnarToRow
             +- FileScan parquet [question_id#0L,creation_date#2] Batched: true, DataFilters: [], Format: Parquet, Location: InMemoryFileIndex[file:/home/dtn/notebooks/data/answers], PartitionFilters: [], PushedFilters: [], ReadSchema: struct<question_id:bigint,creation_date:timestamp>
 ```
-
+***Sample outputs***
 ```
 +-----------+-----+---+
 |question_id|month|cnt|
@@ -129,7 +130,7 @@ resultDF.explain()
 resultDF.orderBy('question_id', 'month').show()
 
 ```
-Query plan
+***Query plan***
 
 ```
 == Physical Plan ==
@@ -149,7 +150,7 @@ Query plan
                         +- FileScan parquet [question_id#0L,creation_date#2] Batched: true, DataFilters: [isnotnull(question_id#0L)], Format: Parquet, Location: InMemoryFileIndex[file:/home/dtn/notebooks/data/answers], PartitionFilters: [], PushedFilters: [IsNotNull(question_id)], ReadSchema: struct<question_id:bigint,creation_date:timestamp>
 ```
 
-Query result:
+***Query result:***
 ```
 +-----------+--------------------+--------------------+-----+---+
 |question_id|       creation_date|               title|month|cnt|
@@ -179,33 +180,110 @@ only showing top 20 rows
 
 73020
 ```
-
-With broadcast
+## Optimizations
+### Change join order
 ```
-from pyspark.sql.functions import broadcast
-resultDF = answers_month.join(broadcast(questionsDF), 'question_id').select('question_id', 'creation_date', 'title', 'month', 'cnt')
-resultDF.explain()
-
-finalDF = resultDF.orderBy('question_id', 'month')
-
-finalDF.show()
-print(finalDF.count())
+resultDF = answers_month.join(questionsDF, 'question_id').select('question_id', 'creation_date', 'title', 'month', 'cnt')
 ```
-
+***Query plan***
 ```
 == Physical Plan ==
 *(3) Project [question_id#0L, creation_date#14, title#15, month#110, cnt#126L]
-+- *(3) BroadcastHashJoin [question_id#0L], [question_id#12L], Inner, BuildRight
-   :- *(3) HashAggregate(keys=[question_id#0L, month#110], functions=[count(1)])
-   :  +- Exchange hashpartitioning(question_id#0L, month#110, 200), true, [id=#192]
-   :     +- *(1) HashAggregate(keys=[question_id#0L, month#110], functions=[partial_count(1)])
-   :        +- *(1) Project [question_id#0L, month(cast(creation_date#2 as date)) AS month#110]
-   :           +- *(1) Filter isnotnull(question_id#0L)
-   :              +- *(1) ColumnarToRow
-   :                 +- FileScan parquet [question_id#0L,creation_date#2] Batched: true, DataFilters: [isnotnull(question_id#0L)], Format: Parquet, Location: InMemoryFileIndex[file:/home/dtn/notebooks/data/answers], PartitionFilters: [], PushedFilters: [IsNotNull(question_id)], ReadSchema: struct<question_id:bigint,creation_date:timestamp>
-   +- BroadcastExchange HashedRelationBroadcastMode(List(input[0, bigint, true])), [id=#200]
-      +- *(2) Project [question_id#12L, creation_date#14, title#15]
-         +- *(2) Filter isnotnull(question_id#12L)
-            +- *(2) ColumnarToRow
-               +- FileScan parquet [question_id#12L,creation_date#14,title#15] Batched: true, DataFilters: [isnotnull(question_id#12L)], Format: Parquet, Location: InMemoryFileIndex[file:/home/dtn/notebooks/data/questions], PartitionFilters: [], PushedFilters: [IsNotNull(question_id)], ReadSchema: struct<question_id:bigint,creation_date:timestamp,title:string>
++- *(3) BroadcastHashJoin [question_id#0L], [question_id#12L], Inner, BuildLeft
+   :- BroadcastExchange HashedRelationBroadcastMode(List(input[0, bigint, true])), [id=#422]
+   :  +- *(2) HashAggregate(keys=[question_id#0L, month#110], functions=[count(1)])
+   :     +- Exchange hashpartitioning(question_id#0L, month#110, 200), true, [id=#418]
+   :        +- *(1) HashAggregate(keys=[question_id#0L, month#110], functions=[partial_count(1)])
+   :           +- *(1) Project [question_id#0L, month(cast(creation_date#2 as date)) AS month#110]
+   :              +- *(1) Filter isnotnull(question_id#0L)
+   :                 +- *(1) ColumnarToRow
+   :                    +- FileScan parquet [question_id#0L,creation_date#2] Batched: true, DataFilters: [isnotnull(question_id#0L)], Format: Parquet, Location: InMemoryFileIndex[file:/home/dtn/notebooks/data/answers], PartitionFilters: [], PushedFilters: [IsNotNull(question_id)], ReadSchema: struct<question_id:bigint,creation_date:timestamp>
+   +- *(3) Project [question_id#12L, creation_date#14, title#15]
+      +- *(3) Filter isnotnull(question_id#12L)
+         +- *(3) ColumnarToRow
+            +- FileScan parquet [question_id#12L,creation_date#14,title#15] Batched: true, DataFilters: [isnotnull(question_id#12L)], Format: Parquet, Location: InMemoryFileIndex[file:/home/dtn/notebooks/data/questions], PartitionFilters: [], PushedFilters: [IsNotNull(question_id)], ReadSchema: struct<question_id:bigint,creation_date:timestamp,title:string>
+
+```
+
+### With broadcast
+```
+from pyspark.sql.functions import broadcast
+resultDF = questionsDF.join(broadcast(answers_month), 'question_id').select('question_id', 'creation_date', 'title', 'month', 'cnt')
+```
+***Query plan***
+```
+== Physical Plan ==
+*(3) Project [question_id#12L, creation_date#14, title#15, month#110, cnt#126L]
++- *(3) BroadcastHashJoin [question_id#12L], [question_id#0L], Inner, BuildRight
+   :- *(3) Project [question_id#12L, creation_date#14, title#15]
+   :  +- *(3) Filter isnotnull(question_id#12L)
+   :     +- *(3) ColumnarToRow
+   :        +- FileScan parquet [question_id#12L,creation_date#14,title#15] Batched: true, DataFilters: [isnotnull(question_id#12L)], Format: Parquet, Location: InMemoryFileIndex[file:/home/dtn/notebooks/data/questions], PartitionFilters: [], PushedFilters: [IsNotNull(question_id)], ReadSchema: struct<question_id:bigint,creation_date:timestamp,title:string>
+   +- BroadcastExchange HashedRelationBroadcastMode(List(input[0, bigint, true])), [id=#878]
+      +- *(2) HashAggregate(keys=[question_id#0L, month#110], functions=[count(1)])
+         +- Exchange hashpartitioning(question_id#0L, month#110, 200), true, [id=#874]
+            +- *(1) HashAggregate(keys=[question_id#0L, month#110], functions=[partial_count(1)])
+               +- *(1) Project [question_id#0L, month(cast(creation_date#2 as date)) AS month#110]
+                  +- *(1) Filter isnotnull(question_id#0L)
+                     +- *(1) ColumnarToRow
+                        +- FileScan parquet [question_id#0L,creation_date#2] Batched: true, DataFilters: [isnotnull(question_id#0L)], Format: Parquet, Location: InMemoryFileIndex[file:/home/dtn/notebooks/data/answers], PartitionFilters: [], PushedFilters: [IsNotNull(question_id)], ReadSchema: struct<question_id:bigint,creation_date:timestamp>
+```
+
+
+* One big different compare to the original is the broadcast approach replace `Exchange` by `BroadcastExchange`.
+* Eventhough `BroadcastExchange` is faster than `Exchange` the overall duration is not different much (9s v.s 9s)
+
+### With cache
+```
+answers_month.cache()
+resultDF = questionsDF.join(answers_month, 'question_id').select('question_id', 'creation_date', 'title', 'month', 'cnt')
+```
+
+***Query plan***
+```
+== Physical Plan ==
+*(2) Project [question_id#12L, creation_date#14, title#15, month#329, cnt#345L]
++- *(2) BroadcastHashJoin [question_id#12L], [question_id#0L], Inner, BuildRight
+   :- *(2) Project [question_id#12L, creation_date#14, title#15]
+   :  +- *(2) Filter isnotnull(question_id#12L)
+   :     +- *(2) ColumnarToRow
+   :        +- FileScan parquet [question_id#12L,creation_date#14,title#15] Batched: true, DataFilters: [isnotnull(question_id#12L)], Format: Parquet, Location: InMemoryFileIndex[file:/home/dtn/notebooks/data/questions], PartitionFilters: [], PushedFilters: [IsNotNull(question_id)], ReadSchema: struct<question_id:bigint,creation_date:timestamp,title:string>
+   +- BroadcastExchange HashedRelationBroadcastMode(List(input[0, bigint, false])), [id=#1172]
+      +- *(1) Filter isnotnull(question_id#0L)
+         +- *(1) ColumnarToRow
+            +- InMemoryTableScan [question_id#0L, month#329, cnt#345L], [isnotnull(question_id#0L)]
+                  +- InMemoryRelation [question_id#0L, month#329, cnt#345L], StorageLevel(disk, memory, deserialized, 1 replicas)
+                        +- *(2) HashAggregate(keys=[question_id#0L, month#329], functions=[count(1)])
+                           +- Exchange hashpartitioning(question_id#0L, month#329, 200), true, [id=#1128]
+                              +- *(1) HashAggregate(keys=[question_id#0L, month#329], functions=[partial_count(1)])
+                                 +- *(1) Project [question_id#0L, month(cast(creation_date#2 as date)) AS month#329]
+                                    +- *(1) ColumnarToRow
+                                       +- FileScan parquet [question_id#0L,creation_date#2] Batched: true, DataFilters: [], Format: Parquet, Location: InMemoryFileIndex[file:/home/dtn/notebooks/data/answers], PartitionFilters: [], PushedFilters: [], ReadSchema: struct<question_id:bigint,creation_date:timestamp>
+```
+### Cache + broadcast
+```
+answers_month.cache()
+resultDF = questionsDF.join(answers_month, 'question_id').select('question_id', 'creation_date', 'title', 'month', 'cnt')
+```
+***Query plan***
+```
+== Physical Plan ==
+*(2) Project [question_id#12L, creation_date#14, title#15, month#329, cnt#345L]
++- *(2) BroadcastHashJoin [question_id#12L], [question_id#0L], Inner, BuildRight
+   :- *(2) Project [question_id#12L, creation_date#14, title#15]
+   :  +- *(2) Filter isnotnull(question_id#12L)
+   :     +- *(2) ColumnarToRow
+   :        +- FileScan parquet [question_id#12L,creation_date#14,title#15] Batched: true, DataFilters: [isnotnull(question_id#12L)], Format: Parquet, Location: InMemoryFileIndex[file:/home/dtn/notebooks/data/questions], PartitionFilters: [], PushedFilters: [IsNotNull(question_id)], ReadSchema: struct<question_id:bigint,creation_date:timestamp,title:string>
+   +- BroadcastExchange HashedRelationBroadcastMode(List(input[0, bigint, false])), [id=#1492]
+      +- *(1) Filter isnotnull(question_id#0L)
+         +- *(1) ColumnarToRow
+            +- InMemoryTableScan [question_id#0L, month#329, cnt#345L], [isnotnull(question_id#0L)]
+                  +- InMemoryRelation [question_id#0L, month#329, cnt#345L], StorageLevel(disk, memory, deserialized, 1 replicas)
+                        +- *(2) HashAggregate(keys=[question_id#0L, month#329], functions=[count(1)])
+                           +- Exchange hashpartitioning(question_id#0L, month#329, 200), true, [id=#1128]
+                              +- *(1) HashAggregate(keys=[question_id#0L, month#329], functions=[partial_count(1)])
+                                 +- *(1) Project [question_id#0L, month(cast(creation_date#2 as date)) AS month#329]
+                                    +- *(1) ColumnarToRow
+                                       +- FileScan parquet [question_id#0L,creation_date#2] Batched: true, DataFilters: [], Format: Parquet, Location: InMemoryFileIndex[file:/home/dtn/notebooks/data/answers], PartitionFilters: [], PushedFilters: [], ReadSchema: struct<question_id:bigint,creation_date:timestamp>
+
 ```
