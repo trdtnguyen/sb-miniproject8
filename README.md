@@ -30,6 +30,13 @@ Cache + broadcast | 5.4
 * Changing join order would not improve the performance in this case. The reason is the sizes of two tables are similar.
 * Broadcast give zero improvement. The reason is we use standalone server with only two worker nodes and the dataset is not large enough to make the broadcast works effectively.
 * Caching dataframe improve the performance neraly two times. The reason is cach work best for small dataset and standalone server where master and worker nodes locate in the same physical machine.
+
+
+`localhost:8080`when run PySpark
+![image1](images/spark_webui.jpg)
+
+`localhost:4040` when run on Scalar - ParkShell
+![image2](images/spark_webui2.jpg)
 ## Data model
 
 ### Questions:
