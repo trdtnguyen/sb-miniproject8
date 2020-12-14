@@ -14,6 +14,7 @@ spark-submit --master spark://192.168.0.2:7077 optimize.py
 Step 2: Get the duration of completed job at Spark webui (`localhost:8080`)
 
 Step 3: Repeat step 1 and 2 N times (N = 5) in this experiment
+
 Step 4: Collect the results and compute the average runtime
 
 The final results:
