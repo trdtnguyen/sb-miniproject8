@@ -26,6 +26,28 @@ Changing join order | 9
 Using broadcast | 9
 Using cache | 4.5
 Cache + broadcast | 5.4
+
+### Tuning using --num-executors, --executor-cores
+We run experiemnents with different settings of `--num-executors` and `--executor-cores` to understand how those values affect to the performance
+`--num-executors` | `--executor-cores` | Elapse time (s)
+------------------|---------------------|--------------
+1 | 1 | 12
+2 | 1 | 12
+4 | 1 | 12
+8 | 1 | 12
+1 | 2 | 8
+2 | 2 | 7
+4 | 2 | 8
+8 | 2 | 7
+1 | 4 | 6
+2 | 4 | 5
+4 | 4 | 5
+8 | 4 | 5
+1 | 8 | 4
+2 | 8 | 5
+4 | 8 | 5
+8 | 8 | 4
+
 ### Analysis
 * Changing join order would not improve the performance in this case. The reason is the sizes of two tables are similar.
 * Broadcast give zero improvement. The reason is we use standalone server with only two worker nodes and the dataset is not large enough to make the broadcast works effectively.
